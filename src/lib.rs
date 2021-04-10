@@ -94,10 +94,10 @@ impl<const N: usize> Looper<N> {
                     || self.state == LooperState::Play
                     || self.state == LooperState::Undo
                 {
-                    self.state = LooperState::Record;
                     if self.state != LooperState::Undo {
                         self.swap_buf();
                     }
+                    self.state = LooperState::Record;
                     Ok(())
                 } else {
                     Err(LooperError::InvalidStateTransition)

@@ -16,7 +16,8 @@ use libdaisy::system;
 
 use daisy_looper::*;
 
-const LOOP_BUFFFER_SIZE: usize = 64 * 1024 * 1024 / 2 / mem::size_of::<u32>();
+// const LOOP_BUFFFER_SIZE: usize = 64 * 1024 * 1024 / 2 / mem::size_of::<u32>();
+const LOOP_BUFFFER_SIZE: usize = libdaisy::sdram::Sdram::bytes() / 2 / mem::size_of::<f32>();
 
 #[rtic::app(
     device = stm32h7xx_hal::stm32,
@@ -37,7 +38,8 @@ const APP: () = {
     fn init(ctx: init::Context) -> init::LateResources {
         logger::init();
         let mut system = system::System::init(ctx.core, ctx.device);
-        let buffer = [(0.0, 0.0); system::BLOCK_SIZE_MAX];
+        let buffer = [(0.0, 0.0); audio::BLOCK_SIZE_MAX];
+        system.timer2.set_freq(1.ms());
 
         let loop_buffer_1: &mut [f32; LOOP_BUFFFER_SIZE] = unsafe {
             slice::from_raw_parts_mut(&mut system.sdram[0], LOOP_BUFFFER_SIZE)
@@ -51,7 +53,7 @@ const APP: () = {
         };
 
         let mut seed_led = hid::Led::new(system.gpio.led, false, 1000);
-        seed_led.set_brightness(0.5);
+        seed_led.set_brightness(0.0);
 
         let daisy28 = system
             .gpio
@@ -59,8 +61,6 @@ const APP: () = {
             .take()
             .expect("Failed to get pin daisy28!")
             .into_pull_up_input();
-
-        system.timer2.set_freq(1.ms());
 
         let looper = Looper::new(loop_buffer_1, Some(loop_buffer_2));
 
@@ -108,7 +108,6 @@ const APP: () = {
 
     #[task( binds = TIM2, resources = [timer2, seed_led, switch1, looper] )]
     fn interface_handler(mut ctx: interface_handler::Context) {
-
         ctx.resources.timer2.clear_irq();
         let switch1 = ctx.resources.switch1;
         let seed_led = ctx.resources.seed_led;
@@ -145,16 +144,19 @@ const APP: () = {
                 .lock(|looper| match looper.get_state() {
                     LooperState::Record => {
                         info!("Play!");
-                        seed_led.set_brightness(0.5);
+                        seed_led.clear_blink();
+                        seed_led.set_brightness(1.0);
                         looper.update(LooperState::Play).unwrap()
                     }
-                    LooperState::Play | LooperState::Stop | LooperState::Clear => {
+                    LooperState::Play
+                    | LooperState::Stop
+                    | LooperState::Clear
+                    | LooperState::Undo => {
                         info!("Record!");
                         seed_led.set_brightness(0.0);
                         seed_led.set_blink(0.1, 1.0);
                         looper.update(LooperState::Record).unwrap()
                     }
-                    _ => (),
                 });
         }
     }
